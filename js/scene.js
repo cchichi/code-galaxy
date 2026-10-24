@@ -1,25 +1,34 @@
-// three.js 星空渲染：自定义着色器星点 + 年份环 + 星云 + 核心辉光 + 拾取交互
+// three.js 星空渲染：自定义着色器星点 + Bloom 辉光 + 年份环 + 时间旅行 + 拾取交互
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const STAR_VERT = `
 attribute float aSize;
 attribute vec3 aColor;
 attribute float aSeed;
 attribute float aArm;
+attribute float aT;      // 时间序：0=最早 1=最新
 varying vec3 vColor;
 varying float vSeed;
 uniform float uTime;
 uniform float uPixelRatio;
-uniform float uSelArm;
+uniform float uSelArm;   // 旋臂过滤，-1=全部
+uniform float uBirth;    // 诞生动画进度 0→1
+uniform float uLimit;    // 时间旅行：只显示 aT <= uLimit
 void main() {
   vColor = aColor;
   vSeed = aSeed;
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   float tw = 0.86 + 0.14 * sin(uTime * 2.0 + aSeed * 6.2831);
-  float dim = (uSelArm < -0.5 || abs(aArm - uSelArm) < 0.5) ? 1.0 : 0.10;
-  vColor *= dim;
-  gl_PointSize = max(aSize * tw * uPixelRatio * (55.0 / -mv.z), 1.0);
+  float dimArm = (uSelArm < -0.5 || abs(aArm - uSelArm) < 0.5) ? 1.0 : 0.10;
+  float dimT = (aT <= uLimit) ? 1.0 : 0.05;
+  float birth = clamp((uBirth - aT) * 2.6, 0.0, 1.0);
+  vColor *= dimArm * dimT * birth;
+  gl_PointSize = max(aSize * tw * uPixelRatio * (55.0 / -mv.z) * (0.3 + 0.7 * birth), 1.0);
   gl_Position = projectionMatrix * mv;
 }`;
 
@@ -50,15 +59,44 @@ function glowTexture() {
   return new THREE.CanvasTexture(c);
 }
 
-let renderer, scene, camera, controls, clock;
-let starPoints = null, farPoints = null, nebulaGroup = null, coreSprite = null, ringGroup = null;
+// 十字衍射星芒贴图（巨新星用）
+function flareTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const bar = (w, h) => {
+    const grad = g.createLinearGradient(0, 64 - h, 0, 64 + h);
+    grad.addColorStop(0, 'rgba(255,235,190,0)');
+    grad.addColorStop(0.5, 'rgba(255,246,220,0.95)');
+    grad.addColorStop(1, 'rgba(255,235,190,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 64 - h, w, h * 2);
+  };
+  g.save();
+  g.translate(64, 64);
+  bar(128, 2.2);
+  g.rotate(Math.PI / 2);
+  bar(128, 2.2);
+  g.rotate(Math.PI / 4);
+  bar(64, 1.2);
+  g.rotate(Math.PI / 2);
+  bar(64, 1.2);
+  g.restore();
+  return new THREE.CanvasTexture(c);
+}
+
+let renderer, composer, camera, scene, controls, clock;
+let starPoints = null, farPoints = null, nebulaGroup = null, coreSprite = null, ringGroup = null, flareGroup = null;
 let starMaterial, raycaster, pointerNDC;
-let armLabelAnchors = [];   // [{el, pos, arm}]
-let ringLabelAnchors = [];  // [{el, pos}]
+let armLabelAnchors = [];
+let ringLabelAnchors = [];  // [{el, pos, now}]
 let onHover = null, onClickStar = null;
 let hoveredIndex = -1;
 let currentGalaxy = null;
 let selArm = -1;
+let limit = 1;            // 时间旅行
+let birthStart = -1;      // 诞生动画起点（clock 秒）
+let nowLabelEl = null;
 
 function makeStarMaterial() {
   return new THREE.ShaderMaterial({
@@ -68,6 +106,8 @@ function makeStarMaterial() {
       uTime: { value: 0 },
       uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
       uSelArm: { value: -1 },
+      uBirth: { value: 0 },
+      uLimit: { value: 1 },
     },
     transparent: true,
     depthWrite: false,
@@ -82,10 +122,12 @@ function buildPoints(stars, material) {
   const size = new Float32Array(n);
   const seed = new Float32Array(n);
   const arm = new Float32Array(n);
+  const tOrd = new Float32Array(n);
   stars.forEach((s, i) => {
     pos[i * 3] = s.x; pos[i * 3 + 1] = s.y; pos[i * 3 + 2] = s.z;
     col[i * 3] = s.color[0] / 255; col[i * 3 + 1] = s.color[1] / 255; col[i * 3 + 2] = s.color[2] / 255;
     size[i] = s.size; seed[i] = s.seed; arm[i] = s.arm;
+    tOrd[i] = s.t != null ? s.t : 0;
   });
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -93,6 +135,7 @@ function buildPoints(stars, material) {
   geo.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
   geo.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
   geo.setAttribute('aArm', new THREE.BufferAttribute(arm, 1));
+  geo.setAttribute('aT', new THREE.BufferAttribute(tOrd, 1));
   return new THREE.Points(geo, material);
 }
 
@@ -108,8 +151,7 @@ function buildFarStars() {
       color: tint < 0.7 ? [200, 210, 255] : tint < 0.9 ? [255, 235, 200] : [160, 200, 255],
       size: 0.5 + Math.random() * 1.1,
       seed: Math.random(),
-      arm: -1,
-      colHour: null,
+      arm: -1, t: 0,
     });
   }
   return buildPoints(stars, starMaterial);
@@ -136,17 +178,22 @@ function buildNebula(tex) {
   return group;
 }
 
-function buildRings(rings) {
-  const group = new THREE.Group();
-  const labelsBox = document.getElementById('ring-labels') || (() => {
+function ensureLabelsBox(id) {
+  return document.getElementById(id) || (() => {
     const d = document.createElement('div');
-    d.id = 'ring-labels';
+    d.id = id;
     document.body.appendChild(d);
     return d;
   })();
+}
+
+function buildRings(rings) {
+  const group = new THREE.Group();
+  const labelsBox = ensureLabelsBox('ring-labels');
   labelsBox.innerHTML = '';
   ringLabelAnchors = [];
-  const labelAngle = 2.35; // 标签统一放在这个方位角上
+  nowLabelEl = null;
+  const labelAngle = 2.35;
   for (const ring of rings) {
     const pts = [];
     for (let i = 0; i <= 96; i++) {
@@ -157,26 +204,36 @@ function buildRings(rings) {
     const mat = new THREE.LineBasicMaterial({
       color: ring.now ? 0x8fa3d4 : 0x3d4f8a,
       transparent: true,
-      opacity: ring.now ? 0.28 : 0.18,
+      opacity: ring.now ? 0.3 : 0.18,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
     group.add(new THREE.Line(geo, mat));
 
-    if (ring.now) {
-      const el = document.createElement('div');
-      el.className = 'ring-label now';
-      el.textContent = '现在 →';
-      labelsBox.appendChild(el);
-      ringLabelAnchors.push({ el, pos: new THREE.Vector3((ring.r + 1.5) * Math.cos(labelAngle), 0, (ring.r + 1.5) * Math.sin(labelAngle)) });
-    } else {
-      const el = document.createElement('div');
-      el.className = 'ring-label';
-      el.textContent = String(ring.year);
-      el.title = `${ring.year} 年 · ${ring.count} 次提交`;
-      labelsBox.appendChild(el);
-      ringLabelAnchors.push({ el, pos: new THREE.Vector3(ring.r * Math.cos(labelAngle), 0, ring.r * Math.sin(labelAngle)) });
-    }
+    const el = document.createElement('div');
+    el.className = 'ring-label' + (ring.now ? ' now' : '');
+    el.textContent = ring.now ? '现在' : String(ring.year);
+    if (!ring.now) el.title = `${ring.year} 年 · ${ring.count} 次提交`;
+    labelsBox.appendChild(el);
+    if (ring.now) nowLabelEl = el;
+    ringLabelAnchors.push({ el, pos: new THREE.Vector3(ring.r * Math.cos(labelAngle), 0, ring.r * Math.sin(labelAngle)), now: !!ring.now });
+  }
+  return group;
+}
+
+function buildFlares(galaxy, tex) {
+  const group = new THREE.Group();
+  for (const s of galaxy.stars) {
+    if (!s.planet) continue;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, color: 0xffe9b0, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    sp.position.set(s.x, s.y, s.z);
+    const sc = s.size * 2.6;
+    sp.scale.set(sc, sc, 1);
+    sp.userData.t = s.t;
+    group.add(sp);
   }
   return group;
 }
@@ -188,10 +245,18 @@ export function init(canvas, { hover, clickStar } = {}) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(0x05070f, 1);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 600);
   camera.position.set(0, 34, 46);
+
+  // Bloom 辉光后期
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.85, 0.7, 0.12);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
 
   controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
@@ -208,12 +273,11 @@ export function init(canvas, { hover, clickStar } = {}) {
 
   farPoints = buildFarStars();
   scene.add(farPoints);
-
   nebulaGroup = buildNebula(tex);
   scene.add(nebulaGroup);
 
   coreSprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: tex, color: 0xfff2d0, transparent: true, opacity: 0.85,
+    map: tex, color: 0xfff2d0, transparent: true, opacity: 0.9,
     blending: THREE.AdditiveBlending, depthWrite: false,
   }));
   coreSprite.scale.set(14, 14, 1);
@@ -241,12 +305,30 @@ function onResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
 }
 
 function tick() {
   const t = clock.getElapsedTime();
   starMaterial.uniforms.uTime.value = t;
+  if (birthStart >= 0) starMaterial.uniforms.uBirth.value = Math.min(1, (t - birthStart) / 3.2);
   controls.update();
+
+  // 银心脉冲
+  if (coreSprite) {
+    const p = 14 + Math.sin(t * 1.8) * 0.8;
+    coreSprite.scale.set(p, p, 1);
+  }
+  // 星芒随诞生/时间旅行显隐
+  if (flareGroup) {
+    const birth = starMaterial.uniforms.uBirth.value;
+    for (const sp of flareGroup.children) {
+      const vis = birth >= 1 && sp.userData.t <= limit;
+      sp.material.opacity = vis ? 0.8 : 0;
+    }
+  }
+  // 「现在」标签：时间旅行时隐藏
+  if (nowLabelEl) nowLabelEl.style.opacity = limit < 0.999 ? 0 : '';
 
   if (starPoints) {
     raycaster.setFromCamera(pointerNDC, camera);
@@ -259,7 +341,7 @@ function tick() {
   }
 
   updateLabels();
-  renderer.render(scene, camera);
+  composer.render();
 }
 
 const _v = new THREE.Vector3();
@@ -276,26 +358,30 @@ function updateLabels() {
     a.el.style.opacity = dimmed ? 0.12 : '';
     projectTo(a.el, a.pos);
   }
-  for (const a of ringLabelAnchors) projectTo(a.el, a.pos);
+  for (const a of ringLabelAnchors) {
+    if (a.now && limit < 0.999) { a.el.style.opacity = 0; }
+    projectTo(a.el, a.pos);
+  }
 }
 
-// 用新的银河数据重建星点、年份环与标签
+// 用新的银河数据重建星点、年份环、星芒与标签
 export function setGalaxy(galaxy) {
   currentGalaxy = galaxy;
   selArm = -1;
+  limit = 1;
   starMaterial.uniforms.uSelArm.value = -1;
+  starMaterial.uniforms.uLimit.value = 1;
+  starMaterial.uniforms.uBirth.value = 0;
+  birthStart = clock.getElapsedTime();
 
-  if (starPoints) {
-    scene.remove(starPoints);
-    starPoints.geometry.dispose();
-    starPoints = null;
+  for (const g of [starPoints, ringGroup, flareGroup]) {
+    if (!g) continue;
+    scene.remove(g);
+    g.traverse((o) => o.geometry && o.geometry.dispose());
   }
-  if (ringGroup) {
-    scene.remove(ringGroup);
-    ringGroup.traverse((o) => o.geometry && o.geometry.dispose());
-    ringGroup = null;
-  }
-  const labelsBox = document.getElementById('arm-labels');
+  starPoints = ringGroup = flareGroup = null;
+
+  const labelsBox = ensureLabelsBox('arm-labels');
   labelsBox.innerHTML = '';
   armLabelAnchors = [];
 
@@ -305,25 +391,30 @@ export function setGalaxy(galaxy) {
   ringGroup = buildRings(galaxy.rings || []);
   scene.add(ringGroup);
 
-  // 每条旋臂最外侧的一颗星作为标签锚点
+  flareGroup = buildFlares(galaxy, flareTexture());
+  scene.add(flareGroup);
+
+  // 旋臂标签锚在「最老」的星上（反向时间映射下位于银河外缘）
   for (let k = 0; k < galaxy.arms.length; k++) {
     const arm = galaxy.arms[k];
     const el = document.createElement('div');
     el.className = 'arm-label';
     el.innerHTML = `${arm.repo} <span class="cnt">×${arm.count}</span>`;
     labelsBox.appendChild(el);
-    const anchorStar = lastOf(galaxy.stars, (s) => s.arm === k && !s.planet);
-    if (anchorStar) armLabelAnchors.push({ el, pos: new THREE.Vector3(anchorStar.x, anchorStar.y, anchorStar.z), arm: k });
+    const anchorStar = firstOf(galaxy.stars, (s) => s.arm === k && !s.planet);
+    if (anchorStar) {
+      const pos = new THREE.Vector3(anchorStar.x, anchorStar.y, anchorStar.z).multiplyScalar(1.09);
+      armLabelAnchors.push({ el, pos, arm: k });
+    }
   }
 
-  // 重置相机视角
   controls.reset();
   camera.position.set(0, 34, 46);
   controls.autoRotate = true;
 }
 
-function lastOf(arr, pred) {
-  for (let i = arr.length - 1; i >= 0; i--) if (pred(arr[i])) return arr[i];
+function firstOf(arr, pred) {
+  for (let i = 0; i < arr.length; i++) if (pred(arr[i])) return arr[i];
   return null;
 }
 
@@ -345,6 +436,13 @@ export function setArmFilter(k) {
   selArm = k;
   starMaterial.uniforms.uSelArm.value = k;
 }
+
+// 时间旅行：v ∈ [0,1]，只显示时间序 ≤ v 的星
+export function setLimit(v) {
+  limit = v;
+  starMaterial.uniforms.uLimit.value = v;
+}
+export function getLimit() { return limit; }
 
 export function getStar(index) {
   return currentGalaxy ? currentGalaxy.stars[index] : null;

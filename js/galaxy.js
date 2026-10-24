@@ -96,10 +96,11 @@ export function buildGalaxy(profile, commitLists) {
     arm.count = commits.length;
 
     commits.forEach((c) => {
-      const t = timeT(c.date); // 全局时间 → 半径，年份环因此与所有旋臂对齐
-      const r = R_IN + t * (R_OUT - R_IN) + (rnd() - 0.5) * 2.0;
+      const t = timeT(c.date); // 0=最早 1=最新
+      // 半径与时间「反向」：越新的提交越靠近银心——银心就是现在的你
+      const r = R_IN + (1 - t) * (R_OUT - R_IN) + (rnd() - 0.5) * 2.0;
       const theta = baseAngle + r * 0.3 + (rnd() - 0.5) * 0.13;
-      const z = gauss() * (1.6 - t * 0.9);
+      const z = gauss() * (0.7 + t * 1.8);
       const hour = c.date.getHours();
       const dow = c.date.getDay();
       const isWeekend = dow === 0 || dow === 6;
@@ -118,7 +119,7 @@ export function buildGalaxy(profile, commitLists) {
       const colWeekend = isWeekend ? WEEKEND_COL.slice() : WORKDAY_COL.slice();
       const s = {
         x: r * Math.cos(theta), y: z, z: r * Math.sin(theta),
-        r, theta, hour, dayN, isWeekend, arm: k,
+        r, theta, t, hour, dayN, isWeekend, arm: k,
         size, seed: rnd(),
         colHour, colRepo, colWeekend, color: colHour,
         repo: arm.repo, owner: arm.owner, sha: c.sha, msg: c.msg,
@@ -151,7 +152,7 @@ export function buildGalaxy(profile, commitLists) {
       }
       const armIdx = arms.findIndex((a) => a.repo === topRepo);
       return {
-        x, y: y + 0.3, z, r: Math.hypot(x, z), theta: Math.atan2(z, x),
+        x, y: y + 0.3, z, r: Math.hypot(x, z), theta: Math.atan2(z, x), t: timeT(group[0].date),
         size: Math.min(11, 5.5 + n * 0.4), seed: rnd(),
         color: PLANET_COL, colHour: PLANET_COL, colRepo: PLANET_COL, colWeekend: PLANET_COL,
         arm: armIdx >= 0 ? armIdx : 0, planet: true, dayN: n,
@@ -161,18 +162,32 @@ export function buildGalaxy(profile, commitLists) {
       };
     });
 
-  // 年份环：每年 1 月 1 日对应一条刻度环
+  // 年份环：每年 1 月 1 日对应一条刻度环（时间反向：新年份在内，「现在」在银心）
   const rings = [];
   const y0 = minT.getFullYear(), y1 = maxT.getFullYear();
-  for (let y = y0; y <= y1 + 1; y++) {
+  for (let y = y0; y <= y1; y++) {
     const jan1 = new Date(y, 0, 1);
     const t = timeT(jan1);
-    if (t > 0.02 && t < 1.02) rings.push({ year: y, r: R_IN + Math.min(t, 1) * (R_OUT - R_IN), count: yearCount.get(y) || 0 });
+    if (t > 0.02 && t < 1.02) rings.push({ year: y, t, r: R_IN + (1 - Math.min(t, 1)) * (R_OUT - R_IN), count: yearCount.get(y) || 0 });
   }
-  rings.push({ year: null, r: R_OUT + 1.6, count: 0, now: true }); // 「现在」外环
+  rings.push({ year: null, t: 1, r: R_IN - 2.4, count: 0, now: true });
 
   const created = new Date(profile.created_at);
   const ageYears = Math.max(0.1, (Date.now() - created) / 31557600000);
+
+  // 银河判词：按数据特征生成称号与一句话解读
+  const nightPct = total ? Math.round((night / total) * 100) : 0;
+  const weekendPct = total ? Math.round((weekend / total) * 100) : 0;
+  const peakHour = hourHist.indexOf(Math.max(...hourHist));
+  const bestDayEntry = [...dayCount.entries()].sort((a, b) => b[1] - a[1])[0];
+  const badges = [];
+  if (maxDay >= 10) badges.push(['💫 超新星制造机', `最猛的一天 ${bestDayEntry[0]}，你一口气点亮了 ${maxDay} 颗星。`]);
+  if (nightPct >= 30) badges.push(['🌙 夜航星系', `${nightPct}% 的星在深夜点亮，这片银河偏爱夜幕。`]);
+  else if (peakHour >= 5 && peakHour <= 11) badges.push(['🌅 日出星系', `你的星大多在清晨点亮，生物钟峰值出现在 ${peakHour} 点。`]);
+  if (weekendPct >= 30) badges.push(['🌴 周末战士', `每 ${Math.max(2, Math.round(100 / Math.max(1, weekendPct)))} 颗星就有 1 颗诞生于周末。`]);
+  if (ageYears >= 10) badges.push(['🌀 古老旋涡', `从 ${minT.getFullYear()} 年旋转至今，已发光 ${ageYears.toFixed(0)} 年。`]);
+  if (!badges.length) badges.push(['✨ 漫游星云', `${total} 颗星散落在时间星盘上，静待下一次爆发。`]);
+  const verdict = { title: badges[0][0], text: badges.slice(0, 2).map((b) => b[1]).join('') };
 
   return {
     stars: stars.concat(planets),
@@ -185,10 +200,13 @@ export function buildGalaxy(profile, commitLists) {
       total,
       capped: commitLists.some((a) => a.capped),
       ageYears,
-      nightPct: total ? Math.round((night / total) * 100) : 0,
-      weekendPct: total ? Math.round((weekend / total) * 100) : 0,
+      nightPct,
+      weekendPct,
       hourHist,
-      bestDay: [...dayCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null,
+      verdict,
+      firstYear: minT === Infinity ? null : minT.getFullYear(),
+      lastYear: maxT === -Infinity ? null : maxT.getFullYear(),
+      bestDay: bestDayEntry ? bestDayEntry[0] : null,
       bestCount: maxDay,
       dateFrom: minT === Infinity ? null : minT,
       dateTo: maxT === -Infinity ? null : maxT,

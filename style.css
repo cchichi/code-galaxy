@@ -184,6 +184,37 @@ a:hover { text-decoration: underline; }
 }
 .ring-label.now { color: #8fa3d4; font-size: 12px; }
 
+/* ---------- 银河判词 ---------- */
+#verdict {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  max-width: min(44vw, 560px); text-align: center;
+  background: var(--glass); border: 1px solid var(--border); border-radius: var(--radius);
+  backdrop-filter: blur(10px); padding: 10px 18px;
+}
+#verdict-badge {
+  display: inline-block; font-size: 14px; font-weight: 600; letter-spacing: 2px;
+  color: #ffe3ae; background: rgba(255, 214, 110, 0.1);
+  border: 1px solid rgba(255, 214, 110, 0.35); border-radius: 999px;
+  padding: 3px 14px;
+}
+#verdict-line { margin-top: 7px; font-size: 12px; line-height: 1.7; color: #aab8dd; min-height: 20px; }
+
+/* ---------- 时间旅行 ---------- */
+#timeline {
+  position: absolute; bottom: 106px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 14px;
+  background: var(--glass); border: 1px solid var(--border); border-radius: 999px;
+  backdrop-filter: blur(10px);
+}
+.tl-icon { font-size: 14px; }
+#tl-range {
+  width: min(320px, 42vw); accent-color: #8fb4ff; cursor: ew-resize;
+}
+#tl-year {
+  font-size: 12px; color: #ffe3ae; letter-spacing: 1px; min-width: 52px; text-align: center;
+}
+
 /* ---------- 生物钟卡片 ---------- */
 #clock-card {
   position: absolute; left: 16px; top: 176px;
@@ -237,6 +268,10 @@ a:hover { text-decoration: underline; }
   .ring-label { display: none !important; }
   #clock-card { display: none; }
   #mode-switch { bottom: 58px; }
+  #timeline { bottom: 100px; padding: 5px 10px; }
+  #tl-range { width: 40vw; }
+  #verdict { max-width: 92vw; top: auto; bottom: 158px; padding: 8px 12px; }
+  #verdict-line { font-size: 11px; }
   #hint { display: none; }
   #actions { bottom: 16px; }
   #actions button { padding: 8px 12px; font-size: 12px; }

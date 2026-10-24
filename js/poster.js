@@ -64,6 +64,17 @@ export function makePoster(galaxy, avatarImg) {
   const reposTxt = `${arms.length} 个仓库 · ${stats.total} 次提交 · ${stats.capped ? '展示部分' : '全部公开'}`;
   g.fillText(reposTxt, W / 2, 258);
 
+  // 银河判词
+  if (stats.verdict) {
+    g.fillStyle = '#ffd977';
+    g.font = `600 34px ${FONT}`;
+    g.fillText(stats.verdict.title, W / 2, 310);
+    g.fillStyle = '#8d97ba';
+    g.font = `24px ${FONT}`;
+    const line = stats.verdict.text.length > 52 ? stats.verdict.text.slice(0, 52) + '…' : stats.verdict.text;
+    g.fillText(line, W / 2, 352);
+  }
+
   // 头像
   const avR = 54, ax = 150, ay = 182;
   if (avatarImg) {

@@ -70,6 +70,10 @@
 
 <!-- 银河 HUD -->
 <div id="hud" class="hidden">
+  <div id="verdict" class="hidden">
+    <span id="verdict-badge">✨</span>
+    <p id="verdict-line"></p>
+  </div>
   <div id="stats">
     <div class="stat"><span class="k">⭐ 星数</span><span class="v" id="st-commits">–</span></div>
     <div class="stat"><span class="k">🌌 银河年龄</span><span class="v" id="st-age">–</span></div>
@@ -103,11 +107,17 @@
     <button data-mode="repo">📦 仓库</button>
     <button data-mode="weekend">🌴 周末</button>
   </div>
+  <div id="timeline">
+    <span class="tl-icon">⏳</span>
+    <input id="tl-range" type="range" min="0" max="1" step="0.002" value="1" title="拖动回溯时间">
+    <span id="tl-year">现在</span>
+  </div>
   <p id="hint">拖动旋转 · 滚轮缩放 · 悬停查看星 · 点击图例看单条旋臂</p>
 </div>
 
 <div id="toast" class="hidden"></div>
 
+<script src="js/demo.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

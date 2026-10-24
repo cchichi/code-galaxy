@@ -23,7 +23,7 @@ function toast(msg) {
 function renderTooltip(e) {
   const tip = $('tooltip');
   const star = scene.getHoveredStar();
-  if (!e || !star) { tip.classList.add('hidden'); return; }
+  if (!e || !star || (star.t != null && star.t > scene.getLimit() + 0.002)) { tip.classList.add('hidden'); return; }
   const h = star.hour != null ? ` ${String(star.hour).padStart(2, '0')}:00` : '';
   const dayTxt = star.planet ? star.msg : `当日 ${star.dayN} 次提交`;
   tip.innerHTML = `<span class="t-repo">${star.repo}${star.planet ? ' · ⭐ 巨新星' : ''}</span><br>` +
@@ -87,6 +87,32 @@ function hourCss(h) {
   return 'rgb(77,111,255)';
 }
 
+/* ---------- 银河判词（打字机） ---------- */
+let typeTimer = null;
+function typewriter(el, text) {
+  clearInterval(typeTimer);
+  el.textContent = '';
+  let i = 0;
+  typeTimer = setInterval(() => {
+    i++;
+    el.textContent = text.slice(0, i);
+    if (i >= text.length) clearInterval(typeTimer);
+  }, 42);
+}
+
+/* ---------- 时间旅行 ---------- */
+function yearAt(v) {
+  if (!galaxy) return '';
+  let y = galaxy.stats.firstYear;
+  for (const m of galaxy.rings) if (m.year != null && m.t <= v) y = m.year;
+  return y;
+}
+$('tl-range').addEventListener('input', () => {
+  const v = parseFloat($('tl-range').value);
+  scene.setLimit(v);
+  $('tl-year').textContent = v >= 0.998 ? '现在' : `${yearAt(v)} 年`;
+});
+
 /* ---------- 主流程 ---------- */
 async function launch(input) {
   const login = String(input || '').trim().replace(/^@/, '');
@@ -142,6 +168,16 @@ function fillHud(profile) {
   drawClock(s.hourHist);
   $('clock-meta').textContent = `夜猫子 ${s.nightPct}% · 周末 ${s.weekendPct}%`;
   $('clock-card').classList.remove('hidden');
+
+  // 银河判词
+  $('verdict').classList.remove('hidden');
+  $('verdict-badge').textContent = s.verdict.title;
+  typewriter($('verdict-line'), s.verdict.text);
+
+  // 时间旅行复位
+  $('tl-range').value = 1;
+  $('tl-year').textContent = '现在';
+  scene.setLimit(1);
 
   // 旋臂图例（点击过滤）
   const ul = $('arms');
