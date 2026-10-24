@@ -143,7 +143,9 @@ async function launch(input) {
     scene.setGalaxy(galaxy);
     fillHud(profile);
     $('hud').classList.remove('hidden');
-    history.replaceState(null, '', location.pathname + '?u=' + encodeURIComponent(login));
+    const q = new URLSearchParams(location.search);
+    q.set('u', login);
+    history.replaceState(null, '', location.pathname + '?' + q.toString());
   } catch (e) {
     showError(e.message || '出错了，请稍后再试');
     $('landing').classList.remove('fade-out');
