@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>代码银河 Code Galaxy · 把 GitHub 提交记录变成星空</title>
+<meta name="description" content="输入 GitHub 用户名，把每一次公开提交变成一颗星：每个仓库是一条旋臂，提交时刻决定冷暖色，高产的日子更亮。纯浏览器渲染，可 3D 漫游，一键生成星空海报。">
+<meta property="og:title" content="代码银河 Code Galaxy">
+<meta property="og:description" content="把你的 GitHub 提交记录变成一片星空">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://cchichi.github.io/code-galaxy/docs/screenshot-galaxy.png">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌌</text></svg>">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<canvas id="space"></canvas>
+<div id="arm-labels"></div>
+<div id="tooltip" class="hidden"></div>
+
+<!-- 落地页 -->
+<section id="landing">
+  <div class="landing-inner">
+    <div class="brand">🌌</div>
+    <h1>代码银河</h1>
+    <p class="tagline">Code Galaxy</p>
+    <p class="desc">把你的 GitHub 提交记录变成一片星空<br>
+      每个仓库是一条旋臂 · 深夜提交偏蓝，白天偏暖 · 高产的日子更亮</p>
+    <form id="launch-form">
+      <div class="input-row">
+        <input id="username" type="text" placeholder="GitHub 用户名" autocomplete="off" spellcheck="false" maxlength="39">
+        <button type="submit" id="go">生成银河</button>
+      </div>
+      <div class="examples">
+        <span>试试：</span>
+        <button type="button" class="chip" data-u="ruanyf">ruanyf</button>
+        <button type="button" class="chip" data-u="torvalds">torvalds</button>
+        <button type="button" class="chip" data-u="yyx990803">yyx990803</button>
+      </div>
+    </form>
+    <details id="token-box">
+      <summary>加载更多历史（可选，填 Personal Access Token）</summary>
+      <input id="token" type="password" placeholder="ghp_… / github_pat_…（只存在你的浏览器里）">
+      <p class="hint">不填也能用；填了可抓取更多仓库与提交（额度 5000 次/时）。Token 仅保存在本地 localStorage，不会发送到任何第三方服务器。</p>
+    </details>
+    <p class="foot">数据来自 GitHub 公开 API · 纯浏览器本地渲染 · <a href="https://github.com/cchichi/code-galaxy" target="_blank">GitHub 开源</a></p>
+  </div>
+</section>
+
+<!-- 加载中 -->
+<div id="loading" class="hidden">
+  <div class="spinner"></div>
+  <p id="loading-text">正在读取仓库…</p>
+</div>
+
+<!-- 错误 -->
+<div id="error" class="hidden">
+  <p id="error-text"></p>
+  <button id="error-back">返回</button>
+</div>
+
+<!-- 银河 HUD -->
+<div id="hud" class="hidden">
+  <div id="stats">
+    <div class="stat"><span class="k">⭐ 星数</span><span class="v" id="st-commits">–</span></div>
+    <div class="stat"><span class="k">🌌 银河年龄</span><span class="v" id="st-age">–</span></div>
+    <div class="stat"><span class="k">🦉 夜猫子指数</span><span class="v" id="st-night">–</span></div>
+    <div class="stat"><span class="k">✨ 最亮的一天</span><span class="v" id="st-best">–</span></div>
+  </div>
+  <div id="arms-card" class="hidden">
+    <p class="arms-title">旋臂 · 仓库</p>
+    <ul id="arms"></ul>
+  </div>
+  <div id="profile-card">
+    <img id="p-avatar" alt="" src="">
+    <div>
+      <p id="p-name">–</p>
+      <p id="p-login">–</p>
+    </div>
+  </div>
+  <div id="actions">
+    <button id="btn-poster" title="生成星空海报 PNG">📸 星空海报</button>
+    <button id="btn-share" title="复制分享链接">🔗 分享</button>
+    <button id="btn-reset" title="重新输入用户名">🔄 换个人</button>
+  </div>
+  <p id="hint">拖动旋转 · 滚轮缩放 · 悬停查看每颗星</p>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
