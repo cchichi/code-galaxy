@@ -14,12 +14,18 @@
 | --- | --- |
 | ⭐ 每一颗星 | 一次公开提交 |
 | 🌀 每条旋臂 | 一个仓库（标签实时跟随旋臂末端） |
-| 🎨 星点颜色 | 提交时刻：凌晨深蓝 → 清晨青 → 正午暖白 → 傍晚橙 |
+| 📏 半径 | 全局真实时间：越早越靠银心，年份环可直接读出「这圈是哪一年」 |
+| 🎨 星点颜色 | 三种读法一键切换：🕐 提交时刻（凌晨深蓝 → 正午暖白 → 傍晚橙）/ 📦 仓库 / 🌴 工作日-周末 |
 | ✨ 星点亮度 | 当天的提交密度，高产的日子形成亮星云 |
-| 🌰 银河亮核 | 时间越早的提交越靠近中心 |
+| 💫 巨新星 | 单日提交最多的几天，化作金色大星，悬停看「单日 N 次」 |
+| 🌰 银河亮核 | 时间轴的起点 |
+
+![工作日与周末两种读法](docs/screenshot-weekend.png)
 
 - **3D 漫游**：拖动旋转、滚轮缩放，星系缓缓自转
-- **每颗星可交互**：悬停查看提交信息，点击直达该 commit
+- **每颗星可交互**：悬停查看提交信息（含当日提交数），点击直达该 commit
+- **旋臂过滤**：点击图例中的仓库，单独点亮一条旋臂
+- **生物钟玫瑰图**：24 小时提交分布极坐标图，附夜猫子 / 周末指数
 - **统计面板**：星数、银河年龄、夜猫子指数、最亮的一天
 - **📸 星空海报**：一键生成竖版 PNG 海报，保存你的银河
 - **🔗 分享链接**：`?u=用户名` 直接打开别人的银河
@@ -60,7 +66,7 @@ python -m http.server 8000   # 或 npx serve
 
 ## English
 
-**Code Galaxy** turns any GitHub user's public commits into a unique 3D spiral galaxy, rendered entirely in your browser: every commit is a star, every repo is a spiral arm, star color follows the time of day (late-night commits glow blue), and busy days shine brighter. Hover a star to see the commit, click to open it on GitHub, and export a shareable poster PNG.
+**Code Galaxy** turns any GitHub user's public commits into a unique 3D spiral galaxy, rendered entirely in your browser: every commit is a star, every repo is a spiral arm, and radius maps to real time so faint year-rings make the galaxy readable as a timeline. Switch star colors between time-of-day, repo, and weekday/weekend readings; the busiest days become giant golden stars; a 24-hour "biological clock" rose chart reveals your rhythm. Hover a star to see the commit, click to open it on GitHub, and export a shareable poster PNG.
 
 Static site, zero build, no backend. [Try it live](https://cchichi.github.io/code-galaxy/).
 

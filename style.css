@@ -166,14 +166,59 @@ a:hover { text-decoration: underline; }
 #tooltip .t-msg { color: #cdd6ee; word-break: break-all; }
 #tooltip .t-date { color: #6f7a9c; }
 
-/* ---------- 旋臂标签 ---------- */
+/* ---------- 旋臂标签 / 年份环标签 ---------- */
 .arm-label {
   position: fixed; z-index: 5; transform: translate(-50%, -50%);
   font-size: 12px; letter-spacing: 1px; color: #aab8dd; pointer-events: none;
   text-shadow: 0 0 12px rgba(0,0,0,.9), 0 0 4px rgba(0,0,0,.9);
   white-space: nowrap;
+  transition: opacity .25s;
 }
 .arm-label .cnt { color: #5c6685; font-size: 11px; }
+
+.ring-label {
+  position: fixed; z-index: 4; transform: translate(-50%, -50%);
+  font-size: 11px; letter-spacing: 1px; color: #56639b; pointer-events: none;
+  text-shadow: 0 0 10px rgba(0,0,0,.9), 0 0 4px rgba(0,0,0,.9);
+  white-space: nowrap;
+}
+.ring-label.now { color: #8fa3d4; font-size: 12px; }
+
+/* ---------- 生物钟卡片 ---------- */
+#clock-card {
+  position: absolute; left: 16px; top: 176px;
+  padding: 12px 14px 10px;
+  background: var(--glass); border: 1px solid var(--border); border-radius: var(--radius);
+  backdrop-filter: blur(10px); text-align: center;
+}
+#clock { display: block; width: 150px; height: 150px; }
+.clock-title { margin-top: 6px; font-size: 11px; color: var(--dim); letter-spacing: 2px; }
+.clock-meta { margin-top: 3px; font-size: 12px; color: #cdd6ee; }
+
+/* ---------- 颜色模式切换 ---------- */
+#mode-switch {
+  position: absolute; bottom: 68px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px;
+  background: var(--glass); border: 1px solid var(--border); border-radius: 999px;
+  backdrop-filter: blur(10px);
+}
+#mode-switch .mode-label { font-size: 11px; color: var(--dim); letter-spacing: 2px; padding: 0 4px; }
+#mode-switch button {
+  padding: 5px 12px; font-size: 12px; cursor: pointer; border: none;
+  color: var(--dim); background: transparent; border-radius: 999px;
+  transition: background .15s, color .15s;
+}
+#mode-switch button:hover { color: var(--fg); }
+#mode-switch button.active { color: #06122e; font-weight: 600; background: linear-gradient(120deg, #b8ccff, #ffe3ae); }
+
+/* 图例交互 */
+#arms li { cursor: pointer; border-radius: 6px; padding: 3px 6px; transition: opacity .2s, background .15s; }
+#arms li:hover { background: rgba(143,180,255,.12); }
+#arms li.active { background: rgba(143,180,255,.18); }
+#arms li.dimmed { opacity: 0.25; }
+#arms .lang { color: #5c6685; font-size: 11px; }
+.arms-title .click-tip { color: #5c6685; font-size: 10px; }
 
 /* ---------- toast ---------- */
 #toast {
@@ -189,6 +234,9 @@ a:hover { text-decoration: underline; }
   .stat { min-width: 120px; padding: 8px 10px; }
   #arms-card { display: none; }
   .arm-label { display: none !important; }
+  .ring-label { display: none !important; }
+  #clock-card { display: none; }
+  #mode-switch { bottom: 58px; }
   #hint { display: none; }
   #actions { bottom: 16px; }
   #actions button { padding: 8px 12px; font-size: 12px; }

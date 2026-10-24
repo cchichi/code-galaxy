@@ -1,5 +1,6 @@
-// 数据 → 银河：仓库=旋臂，提交时刻=冷暖色，当日提交密度=亮度
-// 用登录名做随机种子，同一个人生成的银河永远一样
+// 数据 → 银河
+// 半径 = 全局真实时间（越早越靠银心，年份环因此可读）
+// 颜色三套（时刻/仓库/周末），旋臂 = 仓库，当日密度 = 亮度，爆肝日 = 巨新星
 function mulberry32(a) {
   return function () {
     a |= 0; a = (a + 0x6d2b79f5) | 0;
@@ -15,13 +16,17 @@ function hashStr(s) {
 }
 
 const R_IN = 7, R_OUT = 38;
-const ARM_TINTS = ['#ffffff', '#ffd9a0', '#a0c8ff', '#ffb0b0', '#c0ffe0', '#e0c8ff'];
-
-// 时刻 → 颜色：凌晨深蓝 → 清晨青 → 正午暖白 → 傍晚橙 → 夜里回到蓝
+// 仓库维度的区分色板（时刻模式只在标签/图例里用它做淡混合）
+const ARM_TINTS = ['#ffd166', '#4ecdc4', '#ef476f', '#54a0ff', '#c77dff', '#f78c6b'];
+// 时刻色带：凌晨深蓝 → 清晨青 → 正午暖白 → 傍晚橙 → 夜里回到蓝
 const HOUR_STOPS = [
   [0, 77, 111, 255], [4, 111, 157, 255], [7, 168, 221, 255], [11, 255, 243, 196],
   [15, 255, 217, 143], [18, 255, 157, 92], [20, 255, 138, 122], [22, 126, 157, 255], [24, 77, 111, 255],
 ];
+const WEEKEND_COL = [255, 150, 82];
+const WORKDAY_COL = [112, 150, 255];
+const PLANET_COL = [255, 214, 110];
+
 function hourColor(h) {
   for (let i = 0; i < HOUR_STOPS.length - 1; i++) {
     const [h0, r0, g0, b0] = HOUR_STOPS[i], [h1, r1, g1, b1] = HOUR_STOPS[i + 1];
@@ -45,60 +50,134 @@ export function buildGalaxy(profile, commitLists) {
     return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
   };
 
+  // 仓库元信息（语言等）带进旋臂
+  const repoMeta = new Map(commitLists.map((a) => [a.repo, a]));
+
   const arms = commitLists
     .filter((a) => a.commits.length > 0)
     .sort((a, b) => b.commits.length - a.commits.length)
     .slice(0, ARM_TINTS.length);
 
-  // 当日提交密度 → 亮度
-  const dayCount = new Map();
+  // 全局时间范围
+  let minT = Infinity, maxT = -Infinity;
+  for (const a of arms) for (const c of a.commits) {
+    if (c.date < minT) minT = c.date;
+    if (c.date > maxT) maxT = c.date;
+  }
+  const span = maxT - minT || 1;
+  const timeT = (d) => (d - minT) / span;
+
+  // 当日提交密度
+  const dayCount = new Map(), dayRepo = new Map();
   for (const a of arms) for (const c of a.commits) {
     const k = dateKey(c.date);
     dayCount.set(k, (dayCount.get(k) || 0) + 1);
+    const dr = dayRepo.get(k) || new Map();
+    dr.set(a.repo, (dr.get(a.repo) || 0) + 1);
+    dayRepo.set(k, dr);
   }
-  let maxDay = 1, bestKey = null;
-  for (const [k, n] of dayCount) if (n > maxDay) { maxDay = n; bestKey = k; }
+  let maxDay = 1;
+  for (const n of dayCount.values()) if (n > maxDay) maxDay = n;
 
-  const stars = [];
-  let total = 0, night = 0, minT = Infinity, maxT = -Infinity;
   const A = arms.length;
+  const stars = [];
+  const byDay = new Map(); // dateKey -> stars[]
+  let total = 0, night = 0, weekend = 0;
+  const hourHist = new Array(24).fill(0);
+  const yearCount = new Map();
 
   arms.forEach((arm, k) => {
-    const commits = arm.commits.slice().sort((a, b) => a.date - b.date);
-    const tint = hexRgb(ARM_TINTS[k % ARM_TINTS.length]);
-    const baseAngle = (k * 2 * Math.PI) / A + rnd() * 0.8;
+    const meta = repoMeta.get(arm.repo) || {};
     arm.tint = ARM_TINTS[k % ARM_TINTS.length];
+    arm.language = meta.language || null;
+    const tintRgb = hexRgb(arm.tint);
+    const baseAngle = (k * 2 * Math.PI) / A + rnd() * 0.8;
+    const commits = arm.commits.slice().sort((a, b) => a.date - b.date);
     arm.count = commits.length;
-    commits.forEach((c, j) => {
-      const t = commits.length > 1 ? j / (commits.length - 1) : 0.5; // 0=最早(中心) 1=最新(外缘)
-      const r = R_IN + t * (R_OUT - R_IN) + (rnd() - 0.5) * 2.6;
-      const theta = baseAngle + r * 0.3 + (rnd() - 0.5) * 0.17;
-      const z = gauss() * (1.7 - t * 1.0);
+
+    commits.forEach((c) => {
+      const t = timeT(c.date); // 全局时间 → 半径，年份环因此与所有旋臂对齐
+      const r = R_IN + t * (R_OUT - R_IN) + (rnd() - 0.5) * 2.0;
+      const theta = baseAngle + r * 0.3 + (rnd() - 0.5) * 0.13;
+      const z = gauss() * (1.6 - t * 0.9);
       const hour = c.date.getHours();
-      const d = (dayCount.get(dateKey(c.date)) || 1) / maxDay;
+      const dow = c.date.getDay();
+      const isWeekend = dow === 0 || dow === 6;
+      const dayN = dayCount.get(dateKey(c.date)) || 1;
+      const d = dayN / maxDay;
       const size = 1.5 + 3.4 * Math.pow(d, 0.75) + rnd() * 0.7;
-      const col = mix(hourColor(hour), tint, 0.18);
 
       total++;
       if (hour >= 22 || hour < 7) night++;
-      if (c.date < minT) minT = c.date;
-      if (c.date > maxT) maxT = c.date;
+      if (isWeekend) weekend++;
+      hourHist[hour]++;
+      yearCount.set(c.date.getFullYear(), (yearCount.get(c.date.getFullYear()) || 0) + 1);
 
-      stars.push({
+      const colHour = mix(hourColor(hour), tintRgb, 0.15);
+      const colRepo = mix(tintRgb, [255, 255, 255], 0.12);
+      const colWeekend = isWeekend ? WEEKEND_COL.slice() : WORKDAY_COL.slice();
+      const s = {
         x: r * Math.cos(theta), y: z, z: r * Math.sin(theta),
-        r, theta,
-        color: col, size, seed: rnd(),
-        repo: arm.repo, owner: arm.owner, sha: c.sha, msg: c.msg, hour,
-        date: c.date, dateStr: `${c.date.getFullYear()}-${pad(c.date.getMonth() + 1)}-${pad(c.date.getDate())}`,
-      });
+        r, theta, hour, dayN, isWeekend, arm: k,
+        size, seed: rnd(),
+        colHour, colRepo, colWeekend, color: colHour,
+        repo: arm.repo, owner: arm.owner, sha: c.sha, msg: c.msg,
+        date: c.date, dateStr: dateKey(c.date),
+        year: c.date.getFullYear(),
+      };
+      stars.push(s);
+      const k2 = dateKey(c.date);
+      if (!byDay.has(k2)) byDay.set(k2, []);
+      byDay.get(k2).push(s);
     });
   });
+
+  // 爆肝日 → 巨新星（暖金色大星）：单日提交 Top 5 且 ≥3 次
+  const planets = [...dayCount.entries()]
+    .filter(([, n]) => n >= 3)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([k, n]) => {
+      const group = byDay.get(k);
+      let x = 0, y = 0, z = 0;
+      for (const s of group) { x += s.x; y += s.y; z += s.z; }
+      x /= group.length; y /= group.length; z /= group.length;
+      // 归属当天提交最多的仓库
+      let topRepo = group[0].repo, topN = 0;
+      const cnt = new Map();
+      for (const s of group) {
+        cnt.set(s.repo, (cnt.get(s.repo) || 0) + 1);
+        if (cnt.get(s.repo) > topN) { topN = cnt.get(s.repo); topRepo = s.repo; }
+      }
+      const armIdx = arms.findIndex((a) => a.repo === topRepo);
+      return {
+        x, y: y + 0.3, z, r: Math.hypot(x, z), theta: Math.atan2(z, x),
+        size: Math.min(11, 5.5 + n * 0.4), seed: rnd(),
+        color: PLANET_COL, colHour: PLANET_COL, colRepo: PLANET_COL, colWeekend: PLANET_COL,
+        arm: armIdx >= 0 ? armIdx : 0, planet: true, dayN: n,
+        repo: topRepo, owner: group[0].owner, sha: null,
+        msg: `爆肝日：单日 ${n} 次提交`, date: group[0].date, dateStr: k,
+        year: group[0].date.getFullYear(), hour: null, isWeekend: group[0].isWeekend,
+      };
+    });
+
+  // 年份环：每年 1 月 1 日对应一条刻度环
+  const rings = [];
+  const y0 = minT.getFullYear(), y1 = maxT.getFullYear();
+  for (let y = y0; y <= y1 + 1; y++) {
+    const jan1 = new Date(y, 0, 1);
+    const t = timeT(jan1);
+    if (t > 0.02 && t < 1.02) rings.push({ year: y, r: R_IN + Math.min(t, 1) * (R_OUT - R_IN), count: yearCount.get(y) || 0 });
+  }
+  rings.push({ year: null, r: R_OUT + 1.6, count: 0, now: true }); // 「现在」外环
 
   const created = new Date(profile.created_at);
   const ageYears = Math.max(0.1, (Date.now() - created) / 31557600000);
 
   return {
-    stars, arms,
+    stars: stars.concat(planets),
+    arms,
+    rings,
     stats: {
       login: profile.login,
       name: profile.name || profile.login,
@@ -107,7 +186,10 @@ export function buildGalaxy(profile, commitLists) {
       capped: commitLists.some((a) => a.capped),
       ageYears,
       nightPct: total ? Math.round((night / total) * 100) : 0,
-      bestDay: bestKey, bestCount: maxDay,
+      weekendPct: total ? Math.round((weekend / total) * 100) : 0,
+      hourHist,
+      bestDay: [...dayCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null,
+      bestCount: maxDay,
       dateFrom: minT === Infinity ? null : minT,
       dateTo: maxT === -Infinity ? null : maxT,
     },

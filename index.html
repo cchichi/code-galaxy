@@ -24,6 +24,7 @@
 
 <canvas id="space"></canvas>
 <div id="arm-labels"></div>
+<div id="ring-labels"></div>
 <div id="tooltip" class="hidden"></div>
 
 <!-- 落地页 -->
@@ -76,8 +77,13 @@
     <div class="stat"><span class="k">✨ 最亮的一天</span><span class="v" id="st-best">–</span></div>
   </div>
   <div id="arms-card" class="hidden">
-    <p class="arms-title">旋臂 · 仓库</p>
+    <p class="arms-title">旋臂 · 仓库 <span class="click-tip">（点击可单独查看）</span></p>
     <ul id="arms"></ul>
+  </div>
+  <div id="clock-card" class="hidden">
+    <canvas id="clock" width="180" height="180"></canvas>
+    <p class="clock-title">生物钟 · 24h</p>
+    <p id="clock-meta" class="clock-meta">–</p>
   </div>
   <div id="profile-card">
     <img id="p-avatar" alt="" src="">
@@ -91,7 +97,13 @@
     <button id="btn-share" title="复制分享链接">🔗 分享</button>
     <button id="btn-reset" title="重新输入用户名">🔄 换个人</button>
   </div>
-  <p id="hint">拖动旋转 · 滚轮缩放 · 悬停查看每颗星</p>
+  <div id="mode-switch" title="切换星点颜色的含义">
+    <span class="mode-label">颜色</span>
+    <button data-mode="hour" class="active">🕐 时刻</button>
+    <button data-mode="repo">📦 仓库</button>
+    <button data-mode="weekend">🌴 周末</button>
+  </div>
+  <p id="hint">拖动旋转 · 滚轮缩放 · 悬停查看星 · 点击图例看单条旋臂</p>
 </div>
 
 <div id="toast" class="hidden"></div>
